@@ -1,5 +1,5 @@
 /***********************
- * REQUIRED LIBRARIES
+ * ENV + LIBRARIES
  ***********************/
 require("dotenv").config();
 const { Client, GatewayIntentBits } = require("discord.js");
@@ -13,14 +13,14 @@ const client = new Client({
 });
 
 /***********************
- * GOOGLE AUTH (ENV ONLY)
+ * GOOGLE AUTH (ENV SAFE)
  ***********************/
 const auth = new google.auth.GoogleAuth({
   credentials: {
     client_email: process.env.GOOGLE_CLIENT_EMAIL,
-    private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+    private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n")
   },
-  scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+  scopes: ["https://www.googleapis.com/auth/spreadsheets"]
 });
 
 const sheets = google.sheets({ version: "v4", auth });
@@ -29,13 +29,15 @@ const sheets = google.sheets({ version: "v4", auth });
  * CONFIG
  ***********************/
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
+
 const PICKS_SHEET = "Picks";
 const USERS_SHEET = "Users";
-const META_SHEET = "Meta";
+const META_SHEET  = "Meta";
+
 const GUILD_ID = process.env.GUILD_ID;
 
 /***********************
- * READY
+ * READY — REGISTER /pick
  ***********************/
 client.once("ready", async () => {
   console.log(`✅ Logged in as ${client.user.tag}`);
@@ -47,7 +49,7 @@ client.once("ready", async () => {
       options: [
         {
           name: "picks",
-          description: "Comma or newline separated",
+          description: "Comma separated OR one per line",
           type: 3,
           required: true
         }
@@ -56,7 +58,7 @@ client.once("ready", async () => {
     GUILD_ID
   );
 
-  console.log("✅ /pick registered");
+  console.log("✅ /pick command registered");
 });
 
 /***********************
@@ -69,74 +71,73 @@ client.on("interactionCreate", async interaction => {
   await interaction.deferReply({ ephemeral: true });
 
   try {
+    /******** PARSE PICKS ********/
     const raw = interaction.options.getString("picks");
 
     const picks = raw
-      .replace(/\r/g, "")
-      .split(/[,|\n]+/)
+      .split(/,|\n/)
       .map(p => p.trim())
       .filter(Boolean);
 
-    console.log("Parsed picks:", picks);
-
-    /** META **/
+    /******** READ META ********/
     const metaRes = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
       range: `${META_SHEET}!A:B`
     });
 
     const meta = Object.fromEntries(metaRes.data.values || []);
-    const gamesToday = Number(meta.games_today);
 
-    if (!gamesToday) {
-      return interaction.editReply("❌ games_today missing in Meta sheet.");
+    const gamesToday = Number(meta.games_today);
+    const startRow   = Number(meta.start_row);
+
+    if (!gamesToday || !startRow) {
+      return interaction.editReply(
+        "❌ Meta sheet must contain **games_today** and **start_row**"
+      );
     }
 
     if (picks.length !== gamesToday) {
       return interaction.editReply(
-        `❌ You must submit **${gamesToday}** picks (you sent ${picks.length}).`
+        `❌ You must submit **${gamesToday}** picks.\nYou submitted **${picks.length}**.`
       );
     }
 
-    /** USERS **/
+    /******** FIND USER COLUMN ********/
     const usersRes = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
       range: `${USERS_SHEET}!A:B`
     });
 
-    const user = usersRes.data.values?.find(r => r[0] === interaction.user.id);
+    const users = usersRes.data.values || [];
+    const user = users.find(r => r[0] === interaction.user.id);
+
     if (!user) {
-      return interaction.editReply("❌ You are not registered.");
+      return interaction.editReply("❌ You are not registered in the Users sheet.");
     }
 
     const column = user[1];
 
-    /***** READ META SHEET *****/
-const metaRes = await sheets.spreadsheets.values.get({
-  spreadsheetId: SPREADSHEET_ID,
-  range: `${META_SHEET}!A:B`
-});
+    /******** WRITE PICKS ********/
+    const endRow = startRow + gamesToday - 1;
 
-const meta = Object.fromEntries(metaRes.data.values || []);
-
-const startRow = Number(meta.start_row);
-const gamesToday = Number(meta.games_today);
-
-if (!startRow || !gamesToday) {
-  await interaction.editReply("❌ start_row or games_today missing in Meta sheet.");
-  return;
-}
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${PICKS_SHEET}!${column}${startRow}:${column}${endRow}`,
+      valueInputOption: "RAW",
+      requestBody: {
+        values: picks.map(p => [p])
+      }
     });
 
-    await interaction.editReply("✅ Picks submitted!");
+    await interaction.editReply("✅ Picks submitted successfully!");
 
   } catch (err) {
     console.error("❌ PICK ERROR:", err);
-    await interaction.editReply("❌ Error writing picks. Check logs.");
+    await interaction.editReply("❌ Error writing picks. Check bot logs.");
   }
 });
 
 /***********************
  * LOGIN
  ***********************/
-client.login(process.env.BOT_TOKEN);
+client.login(process.env.DISCORD_TOKEN);

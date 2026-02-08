@@ -77,10 +77,12 @@ client.on("interactionCreate", async interaction => {
 
     /***** PARSE PICKS *****/
     const rawPicks = interaction.options.getString("picks");
-    const picks = rawPicks
-      .split(/,|\n/)
-      .map(p => p.trim())
-      .filter(Boolean);
+
+const picks = rawPicks
+  .replace(/\r/g, "")            // remove Windows CR
+  .split(/[,|\n]+/)              // split on commas OR new lines
+  .map(p => p.trim())            // trim spaces
+  .filter(p => p.length > 0);    // remove empties
 
     /***** READ META SHEET *****/
     const metaRes = await sheets.spreadsheets.values.get({

@@ -1,143 +1,90 @@
-/********************
- * DISCORD CLIENT
- ********************/
+require("dotenv").config();
+
+const { Client, GatewayIntentBits, SlashCommandBuilder, REST, Routes } = require("discord.js");
+const { google } = require("googleapis");
+
+/* =====================
+   DISCORD CLIENT
+===================== */
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
 });
 
-/********************
- * GOOGLE AUTH
- ********************/
+/* =====================
+   GOOGLE SHEETS AUTH
+===================== */
 const auth = new google.auth.GoogleAuth({
   credentials: {
     client_email: process.env.GOOGLE_CLIENT_EMAIL,
-    private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+    private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n")
   },
-  scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+  scopes: ["https://www.googleapis.com/auth/spreadsheets"]
 });
 
 const sheets = google.sheets({ version: "v4", auth });
 
-/********************
- * CONFIG — YOU MUST EDIT THESE
- ********************/
-
-// 🔴 GOOGLE SHEET ID (from the URL)
-const SPREADSHEET_ID = "1Z-odT9UxUyc11bWDYehgKTthxdOD_VHGoQ_2A8nc3FE";
-
-// 🔴 SHEET NAMES (must match exactly)
-const PICKS_SHEET = "Picks";
-const USERS_SHEET = "Users";
-const META_SHEET = "Meta";
-
-// 🔴 DISCORD SERVER (GUILD) ID
-const GUILD_ID = "1418861060294705154";
-
-/********************
- * READY — REGISTER SLASH COMMAND
- ********************/
-client.once("ready", async () => {
-  console.log(`✅ Logged in as ${client.user.tag}`);
-
-  await client.application.commands.create(
-    {
-      name: "pick",
-      description: "Submit your picks",
-      options: [
-        {
-          name: "picks",
-          description: "One team per line or comma separated",
-          type: 3,
-          required: true
-        }
-      ]
-    },
-    GUILD_ID
+/* =====================
+   COMMAND DEFINITION
+===================== */
+const pickCommand = new SlashCommandBuilder()
+  .setName("pick")
+  .setDescription("Submit a pick")
+  .addStringOption(opt =>
+    opt.setName("team")
+      .setDescription("Team name")
+      .setRequired(true)
   );
 
-  console.log("✅ /pick command registered");
+/* =====================
+   REGISTER COMMAND
+===================== */
+async function registerCommands() {
+  const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
+
+  await rest.put(
+    Routes.applicationCommands(process.env.DISCORD_CLIENT_ID),
+    { body: [pickCommand.toJSON()] }
+  );
+
+  console.log("✅ Slash commands registered");
+}
+
+/* =====================
+   BOT READY
+===================== */
+client.once("ready", async () => {
+  console.log(`🤖 Logged in as ${client.user.tag}`);
+  await registerCommands();
 });
 
-/********************
- * PICK HANDLER
- ********************/
+/* =====================
+   INTERACTION HANDLER
+===================== */
 client.on("interactionCreate", async interaction => {
   if (!interaction.isChatInputCommand()) return;
   if (interaction.commandName !== "pick") return;
 
-  await interaction.deferReply({ ephemeral: true });
-
   try {
-    /***** PARSE PICKS *****/
-    const rawPicks = interaction.options.getString("picks");
-    const picks = rawPicks
-      .split(/,|\n/)
-      .map(p => p.trim())
-      .filter(Boolean);
+    const team = interaction.options.getString("team");
+    const user = interaction.user.username;
 
-    /***** READ META SHEET *****/
-    const metaRes = await sheets.spreadsheets.values.get({
-      spreadsheetId: SPREADSHEET_ID,
-      range: `${META_SHEET}!A:B`
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: process.env.SPREADSHEET_ID,
+      range: "Picks!A:C",
+      valueInputOption: "RAW",
+      requestBody: {
+        values: [[new Date().toISOString(), user, team]]
+      }
     });
 
-    const meta = Object.fromEntries(metaRes.data.values || []);
-    const startRow = Number(meta.start_row);
-    const gamesToday = Number(meta.games_today);
-
-    if (!startRow || !gamesToday) {
-      await interaction.editReply("❌ Meta sheet missing start_row or games_today.");
-      return;
-    }
-
-    if (picks.length !== gamesToday) {
-      await interaction.editReply(
-        `❌ You must submit exactly ${gamesToday} picks. You submitted ${picks.length}.`
-      );
-      return;
-    }
-
-    /***** FIND USER COLUMN *****/
-    const usersRes = await sheets.spreadsheets.values.get({
-      spreadsheetId: SPREADSHEET_ID,
-      range: `${USERS_SHEET}!A:B`
-    });
-
-    const users = usersRes.data.values || [];
-    const userRow = users.find(r => r[0] === interaction.user.id);
-
-    if (!userRow) {
-      await interaction.editReply("❌ You are not registered in the Users sheet.");
-      return;
-    }
-
-    const columnLetter = userRow[1];
-
-    /***** WRITE PICKS (ONE CELL AT A TIME — BULLETPROOF) *****/
-    let row = startRow;
-
-    for (const pick of picks) {
-      await sheets.spreadsheets.values.update({
-        spreadsheetId: SPREADSHEET_ID,
-        range: `${PICKS_SHEET}!${columnLetter}${row}`,
-        valueInputOption: "RAW",
-        requestBody: {
-          values: [[pick]]
-        }
-      });
-
-      row++;
-    }
-
-    await interaction.editReply("✅ Picks submitted successfully!");
-
+    await interaction.reply({ content: "✅ Pick submitted!", ephemeral: true });
   } catch (err) {
     console.error(err);
-    await interaction.editReply("❌ Error writing picks.");
+    await interaction.reply({ content: "❌ Error writing picks.", ephemeral: true });
   }
 });
 
-/********************
- * LOGIN
- ********************/
-client.login(process.env.BOT_TOKEN);
+/* =====================
+   LOGIN
+===================== */
+client.login(process.env.DISCORD_TOKEN);

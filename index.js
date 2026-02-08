@@ -1,3 +1,129 @@
+import fetch from "node-fetch";
+import { google } from "googleapis";
+
+/* CONFIG */
+const SHEET_NAME = "Results";
+const TIMEZONE = "America/Edmonton";
+
+/* TIME HELPERS */
+function getMountainHour() {
+  const now = new Date();
+  const mountain = new Date(
+    now.toLocaleString("en-US", { timeZone: TIMEZONE })
+  );
+  return mountain.getHours();
+}
+
+function todayISO() {
+  return new Date().toLocaleDateString("en-CA", { timeZone: TIMEZONE });
+}
+
+const auth = new google.auth.GoogleAuth({
+  credentials: {
+    client_email: process.env.GOOGLE_CLIENT_EMAIL,
+    private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+  },
+  scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+});
+
+const sheets = google.sheets({ version: "v4", auth });
+
+async function fetchWHLGames(date) {
+  const url = `https://lscluster.hockeytech.com/feed/?feed=statviewfeed&view=schedule&date=${date}&league_id=1&key=public`;
+  const res = await fetch(url);
+  const data = await res.json();
+  return data?.schedule ?? [];
+}
+
+async function updateScheduledGames() {
+  const date = todayISO();
+  const games = await fetchWHLGames(date);
+
+  if (!games.length) {
+    console.log("No games scheduled today");
+    return;
+  }
+
+  const sheet = await sheets.spreadsheets.values.get({
+    spreadsheetId: process.env.SPREADSHEET_ID,
+    range: `${SHEET_NAME}!A2:F`,
+  });
+
+  const rows = sheet.data.values ?? [];
+  const existing = new Set(rows.map(r => `${r[0]}|${r[1]}|${r[2]}`));
+
+  const inserts = [];
+
+  for (const g of games) {
+    const home = g.home_team_name;
+    const away = g.visiting_team_name;
+    const key = `${date}|${home}|${away}`;
+
+    if (!existing.has(key)) {
+      inserts.push([date, home, away, "", "", "Scheduled"]);
+    }
+  }
+
+  if (!inserts.length) {
+    console.log("No new games to insert");
+    return;
+  }
+
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: process.env.SPREADSHEET_ID,
+    range: `${SHEET_NAME}!A2`,
+    valueInputOption: "RAW",
+    requestBody: { values: inserts },
+  });
+
+  console.log(`Inserted ${inserts.length} scheduled games`);
+}
+
+async function updateFinalScores() {
+  const date = todayISO();
+  const games = await fetchWHLGames(date);
+
+  if (!games.length) return;
+
+  const sheet = await sheets.spreadsheets.values.get({
+    spreadsheetId: process.env.SPREADSHEET_ID,
+    range: `${SHEET_NAME}!A2:F`,
+  });
+
+  const rows = sheet.data.values ?? [];
+  const updates = [];
+
+  games.forEach((g, i) => {
+    if (!g.home_goal_count && !g.visiting_goal_count) return;
+
+    const status =
+      g.game_status === "Final"
+        ? "Final"
+        : g.game_status === "OT"
+        ? "OT"
+        : g.game_status === "SO"
+        ? "SO"
+        : "";
+
+    updates.push({
+      range: `${SHEET_NAME}!D${i + 2}:F${i + 2}`,
+      values: [[g.visiting_goal_count, g.home_goal_count, status]],
+    });
+  });
+
+  if (!updates.length) return;
+
+  await sheets.spreadsheets.values.batchUpdate({
+    spreadsheetId: process.env.SPREADSHEET_ID,
+    requestBody: {
+      valueInputOption: "RAW",
+      data: updates,
+    },
+  });
+
+  console.log("Updated final scores");
+}
+
 /********************
  * REQUIREMENTS
  ********************/
@@ -162,37 +288,19 @@ client.on("interactionCreate", async interaction => {
  ********************/
 client.login(process.env.BOT_TOKEN);
 
-import { DateTime } from "luxon";
+async function runAutomation() {
+  const hour = getMountainHour();
+  console.log("Mountain hour:", hour);
 
-const TIMEZONE = "America/Edmonton";
-
-let lastMorningRun = null;
-let lastNightRun = null;
-
-async function schedulerLoop() {
-  const now = DateTime.now().setZone(TIMEZONE);
-
-  // Morning window: 8:00–10:00 AM
-  if (now.hour >= 8 && now.hour < 10) {
-    if (lastMorningRun !== now.toISODate()) {
-      console.log("☀️ Running morning game sync");
-      await runMorningSync();
-      lastMorningRun = now.toISODate();
-    }
+  // Morning run
+  if (hour >= 8 && hour < 12) {
+    await updateScheduledGames();
   }
 
-  // Night window: 10:30 PM – 1:00 AM
-  if (now.hour >= 22 || now.hour < 1) {
-    if (lastNightRun !== now.toISODate()) {
-      console.log("🌙 Running night score sync");
-      await runNightSync();
-      lastNightRun = now.toISODate();
-    }
+  // Night run
+  if (hour >= 22 || hour < 2) {
+    await updateFinalScores();
   }
 }
 
-// Run every 5 minutes
-setInterval(() => {
-  schedulerLoop().catch(console.error);
-}, 5 * 60 * 1000);
-
+runAutomation().catch(console.error);

@@ -4,11 +4,10 @@ async function run() {
   // fetch games
   // update Results sheet
 
+  run().then(() => {
   console.log("Night sync finished");
-  process.exit(0); // ✅ ADD THIS LINE
-}
-
-run().catch(err => {
+  process.exit(0);
+}).catch(err => {
   console.error(err);
-  process.exit(1); // ✅ ADD THIS TOO
+  process.exit(1);
 });

@@ -4,6 +4,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
+    "update-results": "node update-results.js"
   },
   "dependencies": {
     "discord.js": "^14.25.1",

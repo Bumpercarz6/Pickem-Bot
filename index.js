@@ -36,7 +36,7 @@ const USERS_SHEET = "Users";
 const META_SHEET = "Meta";
 
 // 🔴 3. DISCORD SERVER (GUILD) ID
-const GUILD_ID = "PASTE_YOUR_SERVER_ID_HERE";
+const GUILD_ID = "1418861060294705154";
 
 /***********************
  * READY — REGISTER SLASH COMMAND

@@ -1,12 +1,7 @@
 {
   "name": "pickem-bot",
   "version": "1.0.0",
-  "description": "Discord Pickem Bot",
   "main": "index.js",
-  "type": "commonjs",
-  "engines": {
-    "node": "18.x"
-  },
   "scripts": {
     "start": "node index.js"
   },

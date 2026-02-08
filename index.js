@@ -28,7 +28,7 @@ const sheets = google.sheets({ version: "v4", auth });
 
 // 🔴 1. GOOGLE SHEET ID
 // From URL: https://docs.google.com/spreadsheets/d/THIS_PART/edit
-const SPREADSHEET_ID = "PASTE_YOUR_SHEET_ID_HERE";
+const SPREADSHEET_ID = "1Z-odT9UxUyc11bWDYehgKTthxdOD_VHGoQ_2A8nc3FE";
 
 // 🔴 2. SHEET NAMES (must match exactly)
 const PICKS_SHEET = "Picks";

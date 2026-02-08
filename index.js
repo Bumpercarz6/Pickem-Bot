@@ -1,5 +1,5 @@
-import fetch from "node-fetch";
-import { google } from "googleapis";
+const fetch = require("node-fetch");
+const { google } = require("googleapis");
 
 /* CONFIG */
 const SHEET_NAME = "Results";

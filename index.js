@@ -5,8 +5,18 @@ require("dotenv").config();
 const { Client, GatewayIntentBits } = require("discord.js");
 const { google } = require("googleapis");
 
-import { runMorningSync } from "./sync-morning.js";
-import { runNightSync } from "./sync-night.js";
+import { DateTime } from "luxon";
+
+const now = DateTime.now().setZone("America/Edmonton");
+const hour = now.hour;
+
+if (hour >= 8 && hour < 12) {
+  await updateScheduledGames();
+}
+
+if (hour >= 22 || hour < 2) {
+  await updateFinalScores();
+}
 
 /********************
  * DISCORD CLIENT

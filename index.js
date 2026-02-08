@@ -111,22 +111,21 @@ client.on("interactionCreate", async interaction => {
 
     const column = user[1];
 
-    /** FIND NEXT ROW **/
-    const colRes = await sheets.spreadsheets.values.get({
-      spreadsheetId: SPREADSHEET_ID,
-      range: `${PICKS_SHEET}!${column}:${column}`
-    });
+    /***** READ META SHEET *****/
+const metaRes = await sheets.spreadsheets.values.get({
+  spreadsheetId: SPREADSHEET_ID,
+  range: `${META_SHEET}!A:B`
+});
 
-    const startRow = (colRes.data.values?.length || 0) + 1;
+const meta = Object.fromEntries(metaRes.data.values || []);
 
-    /** WRITE **/
-    await sheets.spreadsheets.values.update({
-      spreadsheetId: SPREADSHEET_ID,
-      range: `${PICKS_SHEET}!${column}${startRow}`,
-      valueInputOption: "RAW",
-      requestBody: {
-        values: picks.map(p => [p])
-      }
+const startRow = Number(meta.start_row);
+const gamesToday = Number(meta.games_today);
+
+if (!startRow || !gamesToday) {
+  await interaction.editReply("❌ start_row or games_today missing in Meta sheet.");
+  return;
+}
     });
 
     await interaction.editReply("✅ Picks submitted!");

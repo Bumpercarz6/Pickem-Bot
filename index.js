@@ -5,6 +5,9 @@ require("dotenv").config();
 const { Client, GatewayIntentBits } = require("discord.js");
 const { google } = require("googleapis");
 
+import { runMorningSync } from "./sync-morning.js";
+import { runNightSync } from "./sync-night.js";
+
 /********************
  * DISCORD CLIENT
  ********************/
@@ -148,3 +151,38 @@ client.on("interactionCreate", async interaction => {
  * LOGIN
  ********************/
 client.login(process.env.BOT_TOKEN);
+
+import { DateTime } from "luxon";
+
+const TIMEZONE = "America/Edmonton";
+
+let lastMorningRun = null;
+let lastNightRun = null;
+
+async function schedulerLoop() {
+  const now = DateTime.now().setZone(TIMEZONE);
+
+  // Morning window: 8:00–10:00 AM
+  if (now.hour >= 8 && now.hour < 10) {
+    if (lastMorningRun !== now.toISODate()) {
+      console.log("☀️ Running morning game sync");
+      await runMorningSync();
+      lastMorningRun = now.toISODate();
+    }
+  }
+
+  // Night window: 10:30 PM – 1:00 AM
+  if (now.hour >= 22 || now.hour < 1) {
+    if (lastNightRun !== now.toISODate()) {
+      console.log("🌙 Running night score sync");
+      await runNightSync();
+      lastNightRun = now.toISODate();
+    }
+  }
+}
+
+// Run every 5 minutes
+setInterval(() => {
+  schedulerLoop().catch(console.error);
+}, 5 * 60 * 1000);
+

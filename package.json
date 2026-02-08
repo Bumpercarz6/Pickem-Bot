@@ -9,6 +9,5 @@
     "discord.js": "^14.14.1",
     "dotenv": "^17.2.4",
     "googleapis": "^137.0.0",
-    "node-fetch": "^2.6.7"
   }
 }
